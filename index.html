@@ -160,6 +160,41 @@
   };
   /* ===== END bloom ===== */
   /* ===== MODULE: world ===== */
+  var _group=null, _creatures=[];
+  function disposeGroup(){ try{ if(_group && Bloom._engine && Bloom._engine.scene) Bloom._engine.scene.remove(_group); }catch(e){} _group=null; }
+  Bloom.world = {
+    build: function(tier){
+      disposeGroup(); _creatures = [];
+      // reactive creatures (state is plain; mesh guarded)
+      var n = 6;
+      for (var i=0;i<n;i++){
+        var a=Math.random()*6.283, d=10+Math.random()*30;
+        var c = { x:Math.cos(a)*d, z:Math.sin(a)*d, mesh:null };
+        _creatures.push(c);
+      }
+      try{
+        if (typeof THREE==='undefined') return;
+        _group = new THREE.Group(); if(Bloom._engine && Bloom._engine.scene) Bloom._engine.scene.add(_group);
+        // ground + lights tinted by palette
+        if (Bloom._engine && Bloom._engine.scene){ Bloom._engine.scene.fog = new THREE.Fog(tier.palette.sky, 60, 240); }
+        var ground = new THREE.Mesh(new THREE.CircleGeometry(320,48), new THREE.MeshStandardMaterial({color:tier.palette.ground, roughness:1}));
+        ground.rotation.x = -Math.PI/2; _group.add(ground);
+        _group.add(new THREE.HemisphereLight(0xffffff, tier.palette.ground, 1.0));
+        var dir=new THREE.DirectionalLight(0xffffff,0.7); dir.position.set(20,40,15); _group.add(dir);
+        for (var j=0;j<_creatures.length;j++){
+          var m=new THREE.Mesh(new THREE.SphereGeometry(0.8,12,12), new THREE.MeshStandardMaterial({color:tier.palette.accent, emissive:tier.palette.accent, emissiveIntensity:0.3}));
+          _creatures[j].mesh=m; _group.add(m);
+        }
+      }catch(e){}
+    },
+    creatures: function(){ return _creatures; },
+    stepCreatures: function(hx, hz){
+      for (var i=0;i<_creatures.length;i++){
+        var c=_creatures[i]; c.x += (hx-c.x)*0.01; c.z += (hz-c.z)*0.01;
+        try{ if(c.mesh) c.mesh.position.set(c.x, 1.2+Math.sin(i)*0.3, c.z); }catch(e){}
+      }
+    }
+  };
   /* ===== END world ===== */
   /* ===== MODULE: audio ===== */
   /* ===== END audio ===== */
