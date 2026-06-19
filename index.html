@@ -90,6 +90,18 @@
   };
   /* ===== END worm ===== */
   /* ===== MODULE: input ===== */
+  Bloom._win = window;
+  var _turn = 0, _installed = false;
+  var LEFT = ['ArrowLeft','a','A'], RIGHT = ['ArrowRight','d','D'];
+  Bloom.input = {
+    install: function(){
+      if (_installed) return; _installed = true;
+      window.addEventListener('keydown', function(e){ if(LEFT.indexOf(e.key)>=0)_turn=1; else if(RIGHT.indexOf(e.key)>=0)_turn=-1; });
+      window.addEventListener('keyup',   function(e){ if(LEFT.indexOf(e.key)>=0||RIGHT.indexOf(e.key)>=0)_turn=0; });
+    },
+    get: function(){ return _turn; },
+    set: function(v){ _turn = v; }
+  };
   /* ===== END input ===== */
   /* ===== MODULE: grazables ===== */
   /* ===== END grazables ===== */
