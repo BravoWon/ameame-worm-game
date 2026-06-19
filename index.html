@@ -39,6 +39,22 @@
   };
   /* ===== END self ===== */
   /* ===== MODULE: tiers ===== */
+  var TIERS = [
+    { id:'flowerbud', name:'Flowerbud', palette:{sky:0xffe1f0, ground:0xffc7e2, accent:0xff8fc7},
+      grazableFamilies:[{name:'petal',color:0xff8fc7,trait:'frill'},{name:'dewdrop',color:0xbfeaff,trait:'glow'},{name:'pollen',color:0xffe07a,trait:'sparkle'}],
+      creatures:'firefly', decor:'petals', musicLayer:0, nextTierProp:'flower' },
+    { id:'garden', name:'Garden', palette:{sky:0xd9ecff, ground:0xc6f0cf, accent:0xff7ab8},
+      grazableFamilies:[{name:'petal',color:0xff7ab8,trait:'frill'},{name:'seedling',color:0x8fd3a8,trait:'leaf'},{name:'dewdrop',color:0xbfeaff,trait:'glow'}],
+      creatures:'butterfly', decor:'flowers', musicLayer:1, nextTierProp:'garden' },
+    { id:'meadow', name:'Meadow', palette:{sky:0xcfe9ff, ground:0xbfe8a8, accent:0xffd166},
+      grazableFamilies:[{name:'grass',color:0x9be38f,trait:'leaf'},{name:'pollen',color:0xffe07a,trait:'sparkle'},{name:'firefly',color:0xfff2a6,trait:'glow'}],
+      creatures:'bird', decor:'meadow', musicLayer:2, nextTierProp:'meadow' }
+  ];
+  Bloom.tiers = {
+    LIST: TIERS,
+    get: function(i){ return TIERS[((i%TIERS.length)+TIERS.length)%TIERS.length]; },
+    next: function(i){ return (i+1) % TIERS.length; }   // slice: loop; later: fractal def
+  };
   /* ===== END tiers ===== */
   /* ===== MODULE: state ===== */
   /* ===== END state ===== */
