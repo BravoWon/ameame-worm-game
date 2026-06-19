@@ -57,6 +57,19 @@
   };
   /* ===== END tiers ===== */
   /* ===== MODULE: state ===== */
+  Bloom.state = {
+    create: function(){ return { tierIndex:0, wonder:0, phase:'title', self: Bloom.self.load() }; },
+    graze: function(st, amount){
+      if (st.phase !== 'playing') return;
+      st.wonder = Math.min(1, st.wonder + (amount||0.1));
+      if (st.wonder >= 1) st.phase = 'blooming';
+    },
+    advanceTier: function(st){
+      st.tierIndex = Bloom.tiers.next(st.tierIndex);
+      st.wonder = 0; st.phase = 'playing';
+      Bloom.self.save(st.self);
+    }
+  };
   /* ===== END state ===== */
   /* ===== MODULE: worm ===== */
   /* ===== END worm ===== */
