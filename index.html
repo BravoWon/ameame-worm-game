@@ -137,6 +137,27 @@
   };
   /* ===== END grazables ===== */
   /* ===== MODULE: bloom ===== */
+  var _bt = 0, DUR = 90, SWAP = 0.5, _swapped = false, _active = false;
+  Bloom.bloom = {
+    begin: function(st){ _bt = 0; _swapped = false; _active = true; st.phase = 'blooming'; },
+    active: function(){ return _active; },
+    progress: function(){ return _bt / DUR; },
+    update: function(st, w){
+      _bt++;
+      var p = _bt / DUR;
+      // visual: pull camera back as p rises (guarded; no-op under tests)
+      try{ var cam=Bloom._engine.camera; if(cam) cam.position.lerp(new THREE.Vector3(w.x,28+p*120,w.z+32+p*120),0.2); }catch(e){}
+      if (!_swapped && p >= SWAP){
+        _swapped = true;
+        Bloom.state.advanceTier(st);                 // tier++, wonder=0, save self
+        Bloom.worm.reset(w);                          // small again, keep segments
+        var nt = Bloom.tiers.get(st.tierIndex);
+        try{ Bloom.world && Bloom.world.build(nt); }catch(e){}
+        try{ Bloom.grazables.reset(nt); }catch(e){}
+      }
+      if (p >= 1){ st.phase = 'playing'; _active = false; }
+    }
+  };
   /* ===== END bloom ===== */
   /* ===== MODULE: world ===== */
   /* ===== END world ===== */
