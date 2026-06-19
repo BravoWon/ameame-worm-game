@@ -7,6 +7,8 @@
   html,body{margin:0;height:100%;overflow:hidden;background:#0b1026;touch-action:none;
     font-family:'Comic Sans MS','Baloo 2','Segoe UI',system-ui,cursive,sans-serif;}
   canvas{display:block;}
+#sky{position:fixed;inset:0;z-index:-1;background:linear-gradient(180deg,#ffd9f4 0%,#e3d9ff 30%,#d6ecff 60%,#d9ffe3 100%);}
+#debug{position:fixed;left:8px;bottom:8px;z-index:20;max-width:92vw;color:#ffec8a;font:12px/1.3 monospace;background:rgba(0,0,0,.55);padding:5px 9px;border-radius:6px;white-space:pre-wrap;display:none;}
 .hud{position:fixed;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.4);user-select:none;z-index:5;}
 #meter{top:14px;left:16px;width:200px;height:16px;border-radius:10px;background:rgba(255,255,255,.25);overflow:hidden;}
 #meterFill{height:100%;width:0%;background:linear-gradient(90deg,#ffd1f0,#fff0a6);transition:width .2s;}
@@ -20,6 +22,8 @@
 #start{margin-top:18px;font-size:26px;padding:16px 46px;border:none;border-radius:32px;background:linear-gradient(180deg,#ffd66e,#ffac4d);color:#7a3b00;cursor:pointer;}
 </style></head>
 <body>
+<div id="sky"></div>
+<div id="debug"></div>
 <div id="meter" class="hud"><div id="meterFill"></div></div>
 <button id="mute" class="hud">🔊</button>
 <div id="touch"><button class="tbtn" id="bl">◀</button><button class="tbtn" id="br">▶</button></div>
@@ -32,6 +36,10 @@
   "use strict";
   var Bloom = (window.Bloom = { VERSION: "0.1.0-slice" });
   var hasTHREE = (typeof THREE !== 'undefined');
+  function showDebug(m){ try{ var d=document.getElementById('debug'); if(d){ d.style.display='block'; d.textContent='⚠ '+String(m); } }catch(e){} }
+  Bloom._dbg = showDebug;
+  try{ window.addEventListener('error', function(ev){ showDebug((ev&&ev.message)||'script error'); }); }catch(e){}
+  if (!hasTHREE){ try{ var _h=document.querySelector('#overlay h1'); if(_h) _h.textContent='Needs internet 🌸'; var _p=document.querySelector('#overlay p'); if(_p) _p.textContent='This game loads its 3D engine from the web the first time — please connect and reopen me.'; }catch(e){} }
 
   /* ===== MODULE: self ===== */
   var TRAIT_OF = { petal:'frill', dewdrop:'glow', pollen:'sparkle', seedling:'leaf',
@@ -236,6 +244,7 @@
   /* ===== MODULE: ui ===== */
   Bloom.ui = {
     install: function(){
+      if (Bloom._uiInstalled) return; Bloom._uiInstalled = true;
       var d=window.document;
       var startBtn=d.getElementById('start'); if(startBtn) startBtn.addEventListener('click', function(){ Bloom.startGame(); });
       var mute=d.getElementById('mute'); if(mute) mute.addEventListener('click', function(){ var m=!Bloom.audio.isMuted(); Bloom.audio.setMuted(m); mute.textContent=m?'🔇':'🔊'; });
@@ -253,14 +262,17 @@
   var renderer=null, scene=null, camera=null;
   try {
     if (hasTHREE) {
-      renderer = new THREE.WebGLRenderer({ antialias:true });
+      renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.body.appendChild(renderer.domElement);
       scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xffd6f2, 1.0));
+      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
       camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2000);
-    }
-  } catch(e){}
+      camera.position.set(0, 28, 34);
+    } else { showDebug('THREE failed to load (CDN blocked?)'); }
+  } catch(e){ showDebug('engine: '+((e&&e.message)||e)); }
   Bloom._engine = { get renderer(){return renderer;}, get scene(){return scene;}, get camera(){return camera;} };
 
   /* ===== MODULE: loop ===== */
@@ -414,7 +426,7 @@
     try{ var E=Bloom._engine; if(E.renderer && E.scene && E.camera){
       E.camera.position.lerp(new THREE.Vector3(W.x,28,W.z+32),0.06); E.camera.lookAt(W.x,0,W.z);
       _renderWorm(E, W, ST, t);
-      E.renderer.render(E.scene, E.camera); } }catch(e){}
+      E.renderer.render(E.scene, E.camera); } }catch(e){ if(!Bloom._re){ Bloom._re=1; showDebug('render: '+((e&&e.message)||e)); } }
   };
 
   // resize handler (guarded)
@@ -427,6 +439,12 @@
       }catch(e){}
     });
   }catch(e){}
+
+  // Wire UI + input at LOAD so the Begin button works. (Previously Bloom.ui.install
+  // ran ONLY inside startGame — which the button click was supposed to trigger — a
+  // dead-button deadlock the stub tests missed because they call startGame directly.)
+  try{ Bloom.input.install(); }catch(e){}
+  try{ Bloom.ui.install(); }catch(e){}
 
   // browser rAF loop (no-op under the test stub's requestAnimationFrame)
   function frame(){ try{ Bloom.tick(); }catch(e){} window.requestAnimationFrame(frame); }
