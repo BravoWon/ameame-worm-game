@@ -104,6 +104,37 @@
   };
   /* ===== END input ===== */
   /* ===== MODULE: grazables ===== */
+  var motes = [], COUNT = 14, _tier = null;
+  function placeNear(g){
+    var bx = (Bloom.worm._w? Bloom.worm._w.x:0)*0.6, bz=(Bloom.worm._w? Bloom.worm._w.z:0)*0.6;
+    var a = Math.random()*6.283, d = 12 + Math.random()*26;
+    g.x = bx + Math.cos(a)*d; g.z = bz + Math.sin(a)*d;
+  }
+  function makeMesh(color){
+    try{ if(typeof THREE==='undefined') return null;
+      var m=new THREE.Mesh(new THREE.SphereGeometry(0.9,12,12), new THREE.MeshStandardMaterial({color:color,emissive:color,emissiveIntensity:0.4}));
+      Bloom._engine.scene && Bloom._engine.scene.add(m); return m; }catch(e){ return null; }
+  }
+  Bloom.grazables = {
+    reset: function(tier){
+      _tier = tier;
+      motes.forEach(function(g){ try{ g.mesh && Bloom._engine.scene && Bloom._engine.scene.remove(g.mesh); }catch(e){} });
+      motes = [];
+      for (var i=0;i<COUNT;i++){
+        var fam = tier.grazableFamilies[i % tier.grazableFamilies.length];
+        var g = { x:0, z:0, family:fam.name, color:fam.color, mesh:null };
+        placeNear(g); g.mesh = makeMesh(fam.color); motes.push(g);
+      }
+    },
+    list: function(){ return motes; },
+    checkEat: function(hx, hz, r){
+      for (var i=0;i<motes.length;i++){
+        var g = motes[i], dx=hx-g.x, dz=hz-g.z;
+        if (dx*dx+dz*dz < r*r){ var fam=g.family; placeNear(g); return fam; }
+      }
+      return null;
+    }
+  };
   /* ===== END grazables ===== */
   /* ===== MODULE: bloom ===== */
   /* ===== END bloom ===== */
