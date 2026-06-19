@@ -72,6 +72,22 @@
   };
   /* ===== END state ===== */
   /* ===== MODULE: worm ===== */
+  var SPEED=0.34, TURN_ACCEL=0.012, TURN_MAX=0.06, TURN_DAMP=0.86;
+  Bloom.worm = {
+    create: function(){ return { x:0, z:0, heading:0, turnVel:0, path:[{x:0,z:0}], segments:4 }; },
+    step: function(w, turnInput, speed){
+      w.turnVel = (w.turnVel + (turnInput||0)*TURN_ACCEL) * TURN_DAMP;
+      if (w.turnVel >  TURN_MAX) w.turnVel =  TURN_MAX;
+      if (w.turnVel < -TURN_MAX) w.turnVel = -TURN_MAX;
+      w.heading += w.turnVel;
+      var s = (speed==null?SPEED:speed);
+      w.x += Math.cos(w.heading)*s; w.z += Math.sin(w.heading)*s;
+      w.path.unshift({x:w.x, z:w.z});
+      var need = (w.segments+2)*6 + 6; while (w.path.length>need) w.path.pop();
+    },
+    grow: function(w){ w.segments++; },
+    reset: function(w){ w.x=0; w.z=0; w.heading=0; w.turnVel=0; w.path=[{x:0,z:0}]; }
+  };
   /* ===== END worm ===== */
   /* ===== MODULE: input ===== */
   /* ===== END input ===== */
