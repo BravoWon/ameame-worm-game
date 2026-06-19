@@ -259,7 +259,43 @@
   Bloom._engine = { get renderer(){return renderer;}, get scene(){return scene;}, get camera(){return camera;} };
 
   /* ===== MODULE: loop ===== */
-  Bloom.tick = function(input){ /* filled in Task 12 */ };
+  Bloom._win = window;
+  var ST = (Bloom.live = Bloom.state.create());   // the ONE live game-state instance (distinct from the pure Bloom.state API)
+  var W  = Bloom.worm.create(); Bloom.worm._w = W;
+
+  Bloom.startGame = function(){
+    try{ Bloom.input.install(); }catch(e){}
+    try{ Bloom.ui.install(); }catch(e){}
+    try{ Bloom.audio.start(); }catch(e){}
+    ST.phase = 'playing';
+    var t0 = Bloom.tiers.get(ST.tierIndex);
+    try{ Bloom.world.build(t0); }catch(e){}
+    try{ Bloom.grazables.reset(t0); }catch(e){}
+    try{ Bloom.ui.hideTitle(); }catch(e){}
+  };
+
+  Bloom.tick = function(forceInput){
+    var input = (forceInput!=null)? forceInput : (Bloom.input.get? Bloom.input.get() : 0);
+    if (ST.phase === 'blooming'){
+      if (!Bloom.bloom.active()){ try{ Bloom.bloom.begin(ST); Bloom.audio.sfx('bloom'); }catch(e){} }
+      try{ Bloom.bloom.update(ST, W); }catch(e){}
+    } else if (ST.phase === 'playing'){
+      Bloom.worm.step(W, input);
+      var fam = (Bloom.grazables.checkEat? Bloom.grazables.checkEat(W.x, W.z, 1.9) : null);
+      if (fam){ Bloom.self.applyGraze(ST.self, fam); Bloom.worm.grow(W);
+        Bloom.state.graze(ST, 0.05); try{ Bloom.audio.sfx('graze'); }catch(e){} }
+      try{ Bloom.world.stepCreatures(W.x, W.z); }catch(e){}
+    }
+    try{ Bloom.ui.setWonder(ST.wonder); }catch(e){}
+    // render (guarded; no-op under tests)
+    try{ var E=Bloom._engine; if(E.renderer && E.scene && E.camera){
+      E.camera.position.lerp(new THREE.Vector3(W.x,28,W.z+32),0.06); E.camera.lookAt(W.x,0,W.z);
+      E.renderer.render(E.scene, E.camera); } }catch(e){}
+  };
+
+  // browser rAF loop (no-op under the test stub's requestAnimationFrame)
+  function frame(){ try{ Bloom.tick(); }catch(e){} window.requestAnimationFrame(frame); }
+  try{ window.requestAnimationFrame(frame); }catch(e){}
   /* ===== END loop ===== */
 })();
 </script>
