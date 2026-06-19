@@ -17,6 +17,26 @@
   var hasTHREE = (typeof THREE !== 'undefined');
 
   /* ===== MODULE: self ===== */
+  var TRAIT_OF = { petal:'frill', dewdrop:'glow', pollen:'sparkle', seedling:'leaf',
+                   grass:'leaf', firefly:'glow', star:'starry', bubble:'bubbly', stone:'plate' };
+  var HUE_OF   = { petal:0.97, dewdrop:0.55, pollen:0.13, seedling:0.33,
+                   grass:0.30, firefly:0.15, star:0.62, bubble:0.50, stone:0.08 };
+  var Self = Bloom.self = {
+    create: function(){ return { hueBias:0.92, parts:[], auraColor:0xfff0a6, traits:[] }; },
+    applyGraze: function(s, family){
+      var targetHue = (family in HUE_OF) ? HUE_OF[family] : s.hueBias;
+      s.hueBias = s.hueBias + (targetHue - s.hueBias) * 0.12;        // drift toward diet
+      var trait = TRAIT_OF[family];
+      if (trait && s.traits.indexOf(trait) < 0){ s.traits.push(trait); s.parts.push(trait); }
+    },
+    save: function(s){ try{ window.localStorage.setItem('bloom_self', JSON.stringify(s)); }catch(e){} },
+    load: function(){
+      try{ var raw=window.localStorage.getItem('bloom_self'); if(raw){ var o=JSON.parse(raw);
+        return { hueBias:+o.hueBias||0.92, parts:o.parts||[], auraColor:o.auraColor||0xfff0a6, traits:o.traits||[] }; } }catch(e){}
+      return Self.create();
+    },
+    TRAIT_OF: TRAIT_OF
+  };
   /* ===== END self ===== */
   /* ===== MODULE: tiers ===== */
   /* ===== END tiers ===== */
