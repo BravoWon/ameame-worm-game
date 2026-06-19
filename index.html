@@ -9,6 +9,7 @@
   canvas{display:block;}
 #sky{position:fixed;inset:0;z-index:-1;background:linear-gradient(180deg,#ffd9f4 0%,#e3d9ff 30%,#d6ecff 60%,#d9ffe3 100%);}
 #debug{position:fixed;left:8px;bottom:8px;z-index:20;max-width:92vw;color:#ffec8a;font:12px/1.3 monospace;background:rgba(0,0,0,.55);padding:5px 9px;border-radius:6px;white-space:pre-wrap;display:none;}
+#vignette{position:fixed;inset:0;z-index:3;pointer-events:none;background:radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(18,4,38,.5) 100%);}
 .hud{position:fixed;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.4);user-select:none;z-index:5;}
 #meter{top:14px;left:16px;width:200px;height:16px;border-radius:10px;background:rgba(255,255,255,.25);overflow:hidden;}
 #meterFill{height:100%;width:0%;background:linear-gradient(90deg,#ffd1f0,#fff0a6);transition:width .2s;}
@@ -24,6 +25,7 @@
 <body>
 <div id="sky"></div>
 <div id="debug"></div>
+<div id="vignette"></div>
 <div id="meter" class="hud"><div id="meterFill"></div></div>
 <button id="mute" class="hud">🔊</button>
 <div id="touch"><button class="tbtn" id="bl">◀</button><button class="tbtn" id="br">▶</button></div>
@@ -34,7 +36,7 @@
 <script>
 (function(){
   "use strict";
-  var Bloom = (window.Bloom = { VERSION: "0.1.0-slice" });
+  var Bloom = (window.Bloom = { VERSION: "0.2.0-cinematic" });
   var hasTHREE = (typeof THREE !== 'undefined');
   function showDebug(m){ try{ var d=document.getElementById('debug'); if(d){ d.style.display='block'; d.textContent='⚠ '+String(m); } }catch(e){} }
   Bloom._dbg = showDebug;
@@ -138,8 +140,11 @@
   }
   function makeMesh(color){
     try{ if(typeof THREE==='undefined') return null;
-      var m=new THREE.Mesh(new THREE.SphereGeometry(0.9,12,12), new THREE.MeshStandardMaterial({color:color,emissive:color,emissiveIntensity:0.4}));
-      Bloom._engine.scene && Bloom._engine.scene.add(m); return m; }catch(e){ return null; }
+      var grp=new THREE.Group();
+      var core=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,16), new THREE.MeshStandardMaterial({color:color,emissive:color,emissiveIntensity:0.95,roughness:0.25}));
+      grp.add(core); grp._core=core;
+      var glow=Bloom.fx.makeGlow(color,4.4); if(glow){ grp.add(glow); grp._glow=glow; }
+      Bloom._engine.scene && Bloom._engine.scene.add(grp); return grp; }catch(e){ return null; }
   }
   Bloom.grazables = {
     reset: function(tier){
@@ -155,10 +160,15 @@
       }
     },
     list: function(){ return motes; },
+    step: function(t){ try{ for(var i=0;i<motes.length;i++){ var g=motes[i]; if(!g.mesh) continue;
+        var pulse=1+Math.sin(t*0.07+i*1.3)*0.2; g.mesh.position.set(g.x, 1.05+Math.sin(t*0.045+i)*0.3, g.z);
+        if(g.mesh._glow&&g.mesh._glow.scale) g.mesh._glow.scale.set(4.4*pulse,4.4*pulse,1);
+        if(g.mesh._core&&g.mesh._core.scale) g.mesh._core.scale.setScalar(pulse); } }catch(e){} },
+    colorOf: function(fam){ for(var i=0;i<motes.length;i++){ if(motes[i].family===fam) return motes[i].color; } return 0xffffff; },
     checkEat: function(hx, hz, r){
       for (var i=0;i<motes.length;i++){
         var g = motes[i], dx=hx-g.x, dz=hz-g.z;
-        if (dx*dx+dz*dz < r*r){ var fam=g.family; placeNear(g); return fam; }
+        if (dx*dx+dz*dz < r*r){ var fam=g.family; Bloom.grazables._lastColor=g.color; placeNear(g); return fam; }
       }
       return null;
     }
@@ -183,13 +193,14 @@
         var nt = Bloom.tiers.get(st.tierIndex);
         try{ Bloom.world && Bloom.world.build(nt); }catch(e){}
         try{ Bloom.grazables.reset(nt); }catch(e){}
+        try{ Bloom.audio.setLayer(st.tierIndex); }catch(e){}
       }
       if (p >= 1){ st.phase = 'playing'; _active = false; }
     }
   };
   /* ===== END bloom ===== */
   /* ===== MODULE: world ===== */
-  var _group=null, _creatures=[];
+  var _group=null, _creatures=[], _ground=null;
   function disposeGroup(){ try{ if(_group && Bloom._engine && Bloom._engine.scene) Bloom._engine.scene.remove(_group); }catch(e){} _group=null; }
   Bloom.world = {
     shrink: function(p){ try{ if(_group) _group.scale.setScalar(Math.max(0.001, 1-p)); }catch(e){} },
@@ -207,17 +218,22 @@
         _group = new THREE.Group(); if(Bloom._engine && Bloom._engine.scene) Bloom._engine.scene.add(_group);
         // ground + lights tinted by palette
         if (Bloom._engine && Bloom._engine.scene){ Bloom._engine.scene.fog = new THREE.Fog(tier.palette.sky, 60, 240); }
-        var ground = new THREE.Mesh(new THREE.CircleGeometry(320,48), new THREE.MeshStandardMaterial({color:tier.palette.ground, roughness:1}));
-        ground.rotation.x = -Math.PI/2; _group.add(ground);
+        var ground = new THREE.Mesh(new THREE.CircleGeometry(340,64), new THREE.MeshStandardMaterial({color:tier.palette.ground, roughness:0.85, emissive:tier.palette.ground, emissiveIntensity:0.12}));
+        ground.rotation.x = -Math.PI/2; _group.add(ground); _ground=ground;
         _group.add(new THREE.HemisphereLight(0xffffff, tier.palette.ground, 1.0));
         var dir=new THREE.DirectionalLight(0xffffff,0.7); dir.position.set(20,40,15); _group.add(dir);
         for (var j=0;j<_creatures.length;j++){
-          var m=new THREE.Mesh(new THREE.SphereGeometry(0.8,12,12), new THREE.MeshStandardMaterial({color:tier.palette.accent, emissive:tier.palette.accent, emissiveIntensity:0.3}));
+          var m=new THREE.Mesh(new THREE.SphereGeometry(0.8,14,14), new THREE.MeshStandardMaterial({color:tier.palette.accent, emissive:tier.palette.accent, emissiveIntensity:0.5, roughness:0.4}));
           _creatures[j].mesh=m; _group.add(m);
+          try{ var cg=Bloom.fx.makeGlow(tier.palette.accent,3.0); if(cg) m.add(cg); }catch(e){}
         }
       }catch(e){}
+      try{ Bloom.fx.buildDome(tier); }catch(e){}
+      try{ Bloom.fx.buildField(tier.palette.accent); }catch(e){}
+      try{ Bloom.fx.buildLights(tier); }catch(e){}
     },
     creatures: function(){ return _creatures; },
+    follow: function(x,z){ try{ if(_ground) _ground.position.set(x,0,z); }catch(e){} },
     stepCreatures: function(hx, hz){
       for (var i=0;i<_creatures.length;i++){
         var c=_creatures[i]; c.x += (hx-c.x)*0.01; c.z += (hz-c.z)*0.01;
@@ -226,19 +242,144 @@
     }
   };
   /* ===== END world ===== */
+  /* ===== MODULE: fx ===== */
+  var _glowTex=null;
+  function _canvasTex(draw){
+    try{ var c=document.createElement('canvas'); c.width=128; c.height=128;
+      var ctx=c.getContext('2d'); if(!ctx) return null;
+      draw(ctx,128); return new THREE.CanvasTexture(c);
+    }catch(e){ return null; }
+  }
+  function glowTexture(){
+    if(_glowTex) return _glowTex;
+    _glowTex=_canvasTex(function(ctx,s){
+      var g=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+      g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.25,'rgba(255,255,255,0.82)');
+      g.addColorStop(0.6,'rgba(255,255,255,0.22)'); g.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,s,s);
+    });
+    return _glowTex;
+  }
+  function makeGlow(color,size){
+    try{ var tex=glowTexture(); if(!tex) return null;
+      var mat=new THREE.SpriteMaterial({ map:tex, color:color, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:0.9 });
+      var sp=new THREE.Sprite(mat); sp.scale.set(size,size,1); return sp;
+    }catch(e){ return null; }
+  }
+  var _field=null;
+  function buildField(color){
+    try{ if(_field&&Bloom._engine.scene){ Bloom._engine.scene.remove(_field.pts); } _field=null;
+      var N=440, pos=new Float32Array(N*3), spd=new Float32Array(N);
+      for(var i=0;i<N;i++){ pos[i*3]=(Math.random()-0.5)*280; pos[i*3+1]=Math.random()*100; pos[i*3+2]=(Math.random()-0.5)*280; spd[i]=0.15+Math.random()*0.5; }
+      var geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      var mat=new THREE.PointsMaterial({ size:1.6, map:glowTexture(), color:color, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:0.75, sizeAttenuation:true });
+      var pts=new THREE.Points(geo,mat); if(Bloom._engine.scene) Bloom._engine.scene.add(pts);
+      _field={ pts:pts, pos:pos, spd:spd, N:N, geo:geo };
+    }catch(e){}
+  }
+  function stepField(){
+    try{ if(!_field) return; var p=_field.pos, s=_field.spd, N=_field.N;
+      for(var i=0;i<N;i++){ p[i*3+1]+=s[i]*0.12; if(p[i*3+1]>100) p[i*3+1]=0; }
+      if(_field.geo.attributes&&_field.geo.attributes.position) _field.geo.attributes.position.needsUpdate=true;
+    }catch(e){}
+  }
+  var _dome=null;
+  function buildDome(tier){
+    try{ if(_dome&&Bloom._engine.scene){ Bloom._engine.scene.remove(_dome); } _dome=null;
+      var sky=new THREE.Color(tier.palette.sky), grd=new THREE.Color(tier.palette.ground);
+      var topHex='#'+sky.getHexString();
+      var midHex='#'+sky.clone().lerp(new THREE.Color(0xffffff),0.45).getHexString();
+      var botHex='#'+grd.clone().lerp(new THREE.Color(0xffffff),0.55).getHexString();
+      var tex=_canvasTex(function(ctx,s){ var g=ctx.createLinearGradient(0,0,0,s);
+        g.addColorStop(0,topHex); g.addColorStop(0.55,midHex); g.addColorStop(1,botHex);
+        ctx.fillStyle=g; ctx.fillRect(0,0,s,s); });
+      var mat=new THREE.MeshBasicMaterial({ map:tex, side:THREE.BackSide, depthWrite:false, fog:false });
+      var dome=new THREE.Mesh(new THREE.SphereGeometry(600,32,16), mat);
+      if(Bloom._engine.scene) Bloom._engine.scene.add(dome); _dome=dome;
+    }catch(e){}
+  }
+  var _plights=[];
+  function buildLights(tier){
+    try{ for(var k=0;k<_plights.length;k++){ try{ Bloom._engine.scene&&Bloom._engine.scene.remove(_plights[k].light); }catch(e){} } _plights=[];
+      if(!Bloom._engine.scene) return;
+      var cols=[tier.palette.accent, tier.palette.sky];
+      for(var i=0;i<2;i++){ var L=new THREE.PointLight(cols[i],0.7,220); L.position.set(0,30,0); Bloom._engine.scene.add(L); _plights.push({light:L, ph:i*3.1}); }
+    }catch(e){}
+  }
+  function stepLights(t,cx,cz){
+    try{ for(var i=0;i<_plights.length;i++){ var P=_plights[i], a=t*0.008+P.ph;
+      P.light.position.set(cx+Math.cos(a)*45, 24+Math.sin(a*0.7)*10, cz+Math.sin(a)*45); } }catch(e){}
+  }
+  var _bursts=[];
+  function spawnBurst(x,y,z,color){
+    try{ var N=16, pos=new Float32Array(N*3), vel=[];
+      for(var i=0;i<N;i++){ pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z; var a=Math.random()*6.283;
+        vel.push([Math.cos(a)*(0.25+Math.random()*0.5), 0.35+Math.random()*0.6, Math.sin(a)*(0.25+Math.random()*0.5)]); }
+      var geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      var mat=new THREE.PointsMaterial({ size:2.6, map:glowTexture(), color:color||0xffffff, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:1 });
+      var pts=new THREE.Points(geo,mat); if(Bloom._engine.scene) Bloom._engine.scene.add(pts);
+      _bursts.push({ pts:pts, pos:pos, vel:vel, geo:geo, mat:mat, life:1, N:N });
+    }catch(e){}
+  }
+  function stepBursts(){
+    try{ for(var b=_bursts.length-1;b>=0;b--){ var B=_bursts[b]; B.life-=0.045;
+        for(var i=0;i<B.N;i++){ B.pos[i*3]+=B.vel[i][0]; B.pos[i*3+1]+=B.vel[i][1]-(1-B.life)*0.3; B.pos[i*3+2]+=B.vel[i][2]; }
+        if(B.geo.attributes&&B.geo.attributes.position) B.geo.attributes.position.needsUpdate=true;
+        if(B.mat) B.mat.opacity=Math.max(0,B.life);
+        if(B.life<=0){ try{ Bloom._engine.scene&&Bloom._engine.scene.remove(B.pts); }catch(e){} _bursts.splice(b,1); }
+      } }catch(e){}
+  }
+  var _trail=null;
+  function ensureTrail(){
+    try{ if(_trail) return _trail; var N=46, pos=new Float32Array(N*3);
+      var geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      var mat=new THREE.PointsMaterial({ size:3.0, map:glowTexture(), color:0xffd1f0, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:0.6, sizeAttenuation:true });
+      var pts=new THREE.Points(geo,mat); if(Bloom._engine.scene) Bloom._engine.scene.add(pts);
+      _trail={ pts:pts, pos:pos, geo:geo, mat:mat, N:N }; return _trail;
+    }catch(e){ return null; }
+  }
+  function stepTrail(W,hue){
+    try{ var T=ensureTrail(); if(!T) return; var N=T.N, path=W.path;
+      for(var i=0;i<N;i++){ var pi=Math.min(i*2+2, path.length-1); var p=path[pi]||path[path.length-1]||{x:W.x,z:W.z};
+        T.pos[i*3]=p.x; T.pos[i*3+1]=1.3; T.pos[i*3+2]=p.z; }
+      if(T.geo.attributes&&T.geo.attributes.position) T.geo.attributes.position.needsUpdate=true;
+      if(T.mat&&T.mat.color&&T.mat.color.setHSL) T.mat.color.setHSL(((hue+0.5)%1+1)%1,0.85,0.7);
+    }catch(e){}
+  }
+  function stepAmbient(t,cx,cz){
+    stepField();
+    try{ if(_field&&_field.pts) _field.pts.position.set(cx,0,cz); }catch(e){}
+    try{ if(_dome) _dome.position.set(cx,0,cz); }catch(e){}
+    stepLights(t,cx,cz); stepBursts();
+  }
+  Bloom.fx = { glowTexture:glowTexture, makeGlow:makeGlow, buildField:buildField, buildDome:buildDome,
+    buildLights:buildLights, spawnBurst:spawnBurst, stepTrail:stepTrail, stepAmbient:stepAmbient };
+  /* ===== END fx ===== */
   /* ===== MODULE: audio ===== */
-  var _ac=null, _muted=false;
-  function tone(freq,dur,type,vol){ if(!_ac||_muted) return; try{
+  var _ac=null, _muted=false, _pad=null, _padGain=null, _padBase=110;
+  function tone(freq,dur,type,vol,delay){ if(!_ac||_muted) return; try{
     var o=_ac.createOscillator(), g=_ac.createGain(); o.type=type||'sine'; o.frequency.value=freq;
-    o.connect(g); g.connect(_ac.destination); var t=_ac.currentTime;
-    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol||0.12,t+0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001,t+(dur||0.25)); o.start(t); o.stop(t+(dur||0.3)); }catch(e){} }
+    o.connect(g); g.connect(_ac.destination); var t=_ac.currentTime+(delay||0);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol||0.12,t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+(dur||0.25)); o.start(t); o.stop(t+(dur||0.3)+0.05); }catch(e){} }
+  function startPad(){ if(!_ac||_pad) return; try{
+    _pad=_ac.createOscillator(); _padGain=_ac.createGain(); _pad.type='sine'; _pad.frequency.value=_padBase;
+    var sub=_ac.createOscillator(), sg=_ac.createGain(); sub.type='sine'; sub.frequency.value=_padBase*1.5; sg.gain.value=0.5;
+    var lfo=_ac.createOscillator(), lg=_ac.createGain(); lfo.frequency.value=0.07; lg.gain.value=0.012;
+    lfo.connect(lg); lg.connect(_padGain.gain);
+    _pad.connect(_padGain); sub.connect(sg); sg.connect(_padGain); _padGain.connect(_ac.destination);
+    _padGain.gain.value=_muted?0:0.025; _pad.start(); sub.start(); lfo.start();
+  }catch(e){} }
   Bloom.audio = {
-    start: function(){ try{ if(!_ac) _ac=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} },
+    start: function(){ try{ if(!_ac) _ac=new (window.AudioContext||window.webkitAudioContext)(); startPad(); }catch(e){} },
     layersFor: function(ti){ return Math.min(3, (ti|0)+1); },
-    setMuted: function(b){ _muted=!!b; }, isMuted: function(){ return _muted; },
-    sfx: function(name){ try{ if(name==='graze') tone(560,0.15,'triangle',0.18);
-      else if(name==='bloom'){ [523,659,784,1047].forEach(function(f){ tone(f,0.4,'sine',0.1); }); } }catch(e){} }
+    setLayer: function(ti){ try{ _padBase=88*Math.pow(1.12,(ti|0)); if(_pad&&_pad.frequency){ _pad.frequency.value=_padBase; } }catch(e){} },
+    setMuted: function(b){ _muted=!!b; try{ if(_padGain&&_padGain.gain) _padGain.gain.value=_muted?0:0.025; }catch(e){} },
+    isMuted: function(){ return _muted; },
+    sfx: function(name){ try{
+      if(name==='graze'){ var base=540+Math.random()*30; [0,4,7].forEach(function(s,i){ tone(base*Math.pow(2,s/12),0.22,'triangle',0.10,i*0.05); }); tone(base*2,0.3,'sine',0.05,0.02); }
+      else if(name==='bloom'){ [0,4,7,12,16,19].forEach(function(s,i){ tone(523.25*Math.pow(2,s/12),0.7,'sine',0.09,i*0.11); }); }
+    }catch(e){} }
   };
   /* ===== END audio ===== */
   /* ===== MODULE: ui ===== */
@@ -324,6 +465,7 @@
         var tip = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), tipMat);
         tip.position.set(ax * 1.2, 1.55, 0.22); g.add(tip);
       });
+      try{ var hg=Bloom.fx.makeGlow(0xffd1f0, 7.0); if(hg){ hg.position.set(0,0.35,0); g.add(hg); _wr.headGlow=hg; } }catch(e){}
       E.scene.add(g);
       _wr.headGroup = g;
     }catch(e){}
@@ -335,10 +477,11 @@
       if (_wr.bodyPool.length <= idx){
         while (_wr.bodyPool.length <= idx){
           var seg = new THREE.Mesh(
-            new THREE.SphereGeometry(0.82, 12, 12),
-            new THREE.MeshStandardMaterial({ color: 0xffd1f0 })
+            new THREE.SphereGeometry(0.8, 14, 14),
+            new THREE.MeshStandardMaterial({ color: 0xffd1f0, emissive: 0xffd1f0, emissiveIntensity: 0.35, roughness: 0.4 })
           );
           E.scene.add(seg);
+          try{ var sg=Bloom.fx.makeGlow(0xffd1f0, 3.6); if(sg){ E.scene.add(sg); seg._glow=sg; } }catch(e){}
           _wr.bodyPool.push(seg);
         }
       }
@@ -355,6 +498,10 @@
       if (_wr.headGroup){
         _wr.headGroup.position.set(W.x, 1.5 + Math.sin(t * 0.15) * 0.12, W.z);
         _wr.headGroup.rotation.y = Math.PI / 2 - W.heading;
+        var pop = _wr.pop||0; if(_wr.pop) _wr.pop=Math.max(0,_wr.pop-0.06);
+        var hsc=1+pop*0.35; _wr.headGroup.scale.set(hsc, 1/(1+pop*0.2), hsc);
+        if (_wr.headGlow){ if(_wr.headGlow.material&&_wr.headGlow.material.color) _wr.headGlow.material.color.copy(headColor);
+          var ggs=7.0*(1+pop*0.5); _wr.headGlow.scale.set(ggs,ggs,1); }
         if (_wr.headSphere) _wr.headSphere.material.color.copy(headColor);
         // leaf sprout if trait present
         try{
@@ -384,15 +531,19 @@
         var pi = Math.min((i + 1) * 5, W.path.length - 1);
         var p = W.path[pi] || W.path[W.path.length - 1];
         if (!p) continue;
-        seg.position.set(p.x, 1.5 + Math.sin(t * 0.15 + (i + 1) * 0.6) * 0.18, p.z);
+        var segY = 1.5 + Math.sin(t * 0.15 + (i + 1) * 0.6) * 0.18;
+        seg.position.set(p.x, segY, p.z);
         // rainbow tint from diet
         var segHue = ((hue + (i + 1) * 0.05) % 1 + 1) % 1;
         seg.material.color.setHSL(segHue, 0.7, 0.68);
+        if (seg._glow){ seg._glow.position.set(p.x, segY, p.z);
+          if(seg._glow.material&&seg._glow.material.color) seg._glow.material.color.setHSL(segHue,0.85,0.7); }
       }
       // hide excess pool segments
       for (var j = W.segments; j < _wr.bodyPool.length; j++){
-        try{ _wr.bodyPool[j].position.set(0, -100, 0); }catch(e){}
+        try{ _wr.bodyPool[j].position.set(0, -100, 0); if(_wr.bodyPool[j]._glow) _wr.bodyPool[j]._glow.position.set(0,-100,0); }catch(e){}
       }
+      try{ Bloom.fx.stepTrail(W, hue); }catch(e){}
     }catch(e){}
   }
 
@@ -400,6 +551,7 @@
     try{ Bloom.input.install(); }catch(e){}
     try{ Bloom.ui.install(); }catch(e){}
     try{ Bloom.audio.start(); }catch(e){}
+    try{ Bloom.audio.setLayer(ST.tierIndex); }catch(e){}
     ST.phase = 'playing';
     var t0 = Bloom.tiers.get(ST.tierIndex);
     try{ Bloom.world.build(t0); }catch(e){}
@@ -418,13 +570,20 @@
       Bloom.worm.step(W, input);
       var fam = (Bloom.grazables.checkEat? Bloom.grazables.checkEat(W.x, W.z, 1.9) : null);
       if (fam){ Bloom.self.applyGraze(ST.self, fam); Bloom.worm.grow(W);
-        Bloom.state.graze(ST, 0.05); try{ Bloom.audio.sfx('graze'); }catch(e){} }
+        Bloom.state.graze(ST, 0.05); try{ Bloom.audio.sfx('graze'); }catch(e){}
+        _wr.pop = 1; try{ Bloom.fx.spawnBurst(W.x, 1.5, W.z, Bloom.grazables._lastColor); }catch(e){} }
       try{ Bloom.world.stepCreatures(W.x, W.z); }catch(e){}
     }
     try{ Bloom.ui.setWonder(ST.wonder); }catch(e){}
     // render (guarded; no-op under tests)
     try{ var E=Bloom._engine; if(E.renderer && E.scene && E.camera){
-      E.camera.position.lerp(new THREE.Vector3(W.x,28,W.z+32),0.06); E.camera.lookAt(W.x,0,W.z);
+      if (ST.phase !== 'blooming'){
+        var bx=Math.sin(t*0.012)*1.4, by=Math.cos(t*0.016)*0.9;
+        E.camera.position.lerp(new THREE.Vector3(W.x+bx, 27+by, W.z+32), 0.06);
+        E.camera.lookAt(W.x, 1.0, W.z + 3);
+      }
+      if (ST.phase === 'playing'){ try{ Bloom.world.follow(W.x, W.z); }catch(e){} try{ Bloom.grazables.step(t); }catch(e){} }
+      try{ Bloom.fx.stepAmbient(t, E.camera.position.x, E.camera.position.z); }catch(e){}
       _renderWorm(E, W, ST, t);
       E.renderer.render(E.scene, E.camera); } }catch(e){ if(!Bloom._re){ Bloom._re=1; showDebug('render: '+((e&&e.message)||e)); } }
   };
