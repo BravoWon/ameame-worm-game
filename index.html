@@ -7,8 +7,25 @@
   html,body{margin:0;height:100%;overflow:hidden;background:#0b1026;touch-action:none;
     font-family:'Comic Sans MS','Baloo 2','Segoe UI',system-ui,cursive,sans-serif;}
   canvas{display:block;}
+.hud{position:fixed;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.4);user-select:none;z-index:5;}
+#meter{top:14px;left:16px;width:200px;height:16px;border-radius:10px;background:rgba(255,255,255,.25);overflow:hidden;}
+#meterFill{height:100%;width:0%;background:linear-gradient(90deg,#ffd1f0,#fff0a6);transition:width .2s;}
+#mute{top:12px;right:14px;background:rgba(255,255,255,.3);border:none;border-radius:20px;padding:8px 14px;font-size:15px;cursor:pointer;color:#fff;}
+#touch{position:fixed;inset:auto 0 0 0;height:32%;display:flex;justify-content:space-between;align-items:flex-end;padding:0 18px 24px;pointer-events:none;z-index:4;}
+.tbtn{pointer-events:auto;width:84px;height:84px;border-radius:50%;border:none;font-size:36px;background:rgba(255,255,255,.3);color:#fff;}
+#overlay{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  background:radial-gradient(circle at 50% 40%, rgba(60,30,80,.5), rgba(10,12,38,.85));}
+#overlay h1{font-size:min(12vw,64px);color:#ffd1f0;text-shadow:0 0 24px #ff8fd0;margin:0;}
+#overlay .jp{color:#bfe; font-size:24px;margin:8px;}
+#start{margin-top:18px;font-size:26px;padding:16px 46px;border:none;border-radius:32px;background:linear-gradient(180deg,#ffd66e,#ffac4d);color:#7a3b00;cursor:pointer;}
 </style></head>
 <body>
+<div id="meter" class="hud"><div id="meterFill"></div></div>
+<button id="mute" class="hud">🔊</button>
+<div id="touch"><button class="tbtn" id="bl">◀</button><button class="tbtn" id="br">▶</button></div>
+<div id="overlay"><h1>The Endless Bloom</h1><div class="jp">あめあめの えんどれす ぶるーむ</div>
+<p style="color:#fff;max-width:520px">Steer with ← → (or A D, or the big buttons), graze the glowing motes, and fill the bloom… ✨</p>
+<button id="start">▶ Begin, Ameame</button></div>
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script>
 (function(){
@@ -212,6 +229,19 @@
   };
   /* ===== END audio ===== */
   /* ===== MODULE: ui ===== */
+  Bloom.ui = {
+    install: function(){
+      var d=window.document;
+      var startBtn=d.getElementById('start'); if(startBtn) startBtn.addEventListener('click', function(){ Bloom.startGame(); });
+      var mute=d.getElementById('mute'); if(mute) mute.addEventListener('click', function(){ var m=!Bloom.audio.isMuted(); Bloom.audio.setMuted(m); mute.textContent=m?'🔇':'🔊'; });
+      var bl=d.getElementById('bl'), br=d.getElementById('br');
+      if(bl){ bl.addEventListener('mousedown',function(){Bloom.input.set(1);}); bl.addEventListener('touchstart',function(e){e.preventDefault&&e.preventDefault();Bloom.input.set(1);}); bl.addEventListener('mouseup',function(){Bloom.input.set(0);}); bl.addEventListener('touchend',function(){Bloom.input.set(0);}); }
+      if(br){ br.addEventListener('mousedown',function(){Bloom.input.set(-1);}); br.addEventListener('touchstart',function(e){e.preventDefault&&e.preventDefault();Bloom.input.set(-1);}); br.addEventListener('mouseup',function(){Bloom.input.set(0);}); br.addEventListener('touchend',function(){Bloom.input.set(0);}); }
+    },
+    setWonder: function(v){ var f=window.document.getElementById('meterFill'); if(f) f.style.width = Math.round(Math.max(0,Math.min(1,v))*100)+'%'; },
+    hideTitle: function(){ var o=window.document.getElementById('overlay'); if(o) o.style.display='none'; },
+    showTitle: function(){ var o=window.document.getElementById('overlay'); if(o) o.style.display='flex'; }
+  };
   /* ===== END ui ===== */
 
   // ---- engine (guarded) ----
